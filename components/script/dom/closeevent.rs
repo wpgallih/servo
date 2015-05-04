@@ -44,43 +44,39 @@ impl CloseEvent{
         }
     }
 
-    pub fn new_uninitialized(global: GlobalRef) -> Temporary<CloseEvent> {
-        reflect_dom_object(box CloseEvent::new_inherited(EventTypeId::CloseEvent),
-                   global,
-                   CloseEventBinding::Wrap)
-    }
-
     pub fn new(global: GlobalRef,
-           type_: DOMString,
-           bubbles: EventBubbles,
-           cancelable: EventCancelable,
-           wasClean: bool,
-           code: u16,
-           reason: DOMString) -> Temporary<CloseEvent> {
-        let ev = CloseEvent::new_uninitialized(global).root();
+               type_: DOMString,
+               bubbles: EventBubbles,
+               cancelable: EventCancelable,
+               wasClean: bool,
+               code: u16,
+               reason: DOMString) -> Temporary<CloseEvent> {
+        let ev = reflect_dom_object(box CloseEvent::new_inherited(EventTypeId::CloseEvent),
+                                    global,
+                                    CloseEventBinding::Wrap);
         let event: JSRef<Event> = EventCast::from_ref(ev.r());
-            event.InitEvent(type_,
-                bubbles == EventBubbles::Bubbles,
-                cancelable == EventCancelable::Cancelable);
+        event.InitEvent(type_,
+                        bubbles == EventBubbles::Bubbles,
+                        cancelable == EventCancelable::Cancelable);
         let ev = ev.r();
         ev.wasClean.set(wasClean);
         ev.code.set(code);
         *ev.reason.borrow_mut() = reason;
-            Temporary::from_rooted(ev)
+        Temporary::from_rooted(ev)
     }
 
     pub fn Constructor(global: GlobalRef,
-               type_: DOMString,
-               init: &CloseEventBinding::CloseEventInit) -> Fallible<Temporary<CloseEvent>> {
-        let clean_status = init.wasClean.unwrap();
+                       type_: DOMString,
+                       init: &CloseEventBinding::CloseEventInit) -> Fallible<Temporary<CloseEvent>> {
+        let clean_status = init.wasClean.unwrap_or();
         let cd = init.code.unwrap_or(0);
         let rsn = match init.reason.as_ref() {
             Some(reason) => reason.clone(),
             None => "".to_owned(),
         };
-            let bubbles = if init.parent.bubbles { EventBubbles::Bubbles } else { EventBubbles::DoesNotBubble };
-            let cancelable = if init.parent.cancelable { EventCancelable::Cancelable } else { EventCancelable::NotCancelable };
-            Ok(CloseEvent::new(global, type_, bubbles, cancelable, clean_status, cd, rsn))
+        let bubbles = if init.parent.bubbles { EventBubbles::Bubbles } else { EventBubbles::DoesNotBubble };
+        let cancelable = if init.parent.cancelable { EventCancelable::Cancelable } else { EventCancelable::NotCancelable };
+        Ok(CloseEvent::new(global, type_, bubbles, cancelable, clean_status, cd, rsn))
     }
 }
 
