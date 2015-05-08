@@ -19,14 +19,18 @@ use dom::bindings::utils::reflect_dom_object;
 use dom::closeevent::CloseEvent;
 use dom::event::{Event, EventBubbles, EventCancelable, EventHelpers};
 use dom::eventtarget::{EventTarget, EventTargetHelpers, EventTargetTypeId};
+use dom::messageevent::MessageEvent;
 use script_task::Runnable;
 use script_task::ScriptMsg;
 use std::cell::{Cell, RefCell};
 use std::borrow::ToOwned;
+use std::sync::mpsc::channel;
+use std::thread;
 use util::str::DOMString;
 
 use websocket::Message;
 use websocket::ws::sender::Sender as Sender_Object;
+use websocket::ws::receiver::Receiver as Receiver_Object;
 use websocket::client::sender::Sender;
 use websocket::client::receiver::Receiver;
 use websocket::stream::WebSocketStream;
@@ -53,7 +57,6 @@ pub struct WebSocket {
     global: GlobalField,
     ready_state: Cell<WebSocketRequestState>,
     sender: RefCell<Option<Sender<WebSocketStream>>>,
-    receiver: RefCell<Option<Receiver<WebSocketStream>>>,
     failed: Cell<bool>, //Flag to tell if websocket was closed due to failure
     full: Cell<bool>, //Flag to tell if websocket queue is full
     clean_close: Cell<bool>, //Flag to tell if the websocket closed cleanly (not due to full or fail)
@@ -72,7 +75,6 @@ impl WebSocket {
             ready_state: Cell::new(WebSocketRequestState::Connecting),
             failed: Cell::new(false),
             sender: RefCell::new(None),
-            receiver: RefCell::new(None),
             full: Cell::new(false),
             clean_close: Cell::new(true),
             code: Cell::new(0),
@@ -108,11 +110,11 @@ impl WebSocket {
             //Do nothing else. Let the close finish.
             return Temporary::from_rooted(ws_root);
         }
-        let (temp_sender, temp_receiver) = response.begin().split(); //Set send and receiver in the attributes
+        let (temp_sender, mut temp_receiver) = response.begin().split(); //Set send and receiver in the attributes
         let mut other_sender = ws_root.sender.borrow_mut();
-        let mut other_receiver = ws_root.receiver.borrow_mut();
         *other_sender = Some(temp_sender);
-        *other_receiver = Some(temp_receiver);
+        let (tx, rx) = channel();
+        let tx_1 = tx.clone();
 
         //Create everything necessary for starting the open asynchronous task, then begin the task.
         let global_root = ws_root.global.root();
@@ -132,6 +134,48 @@ impl WebSocket {
           it confirms the websocket is now closed. This requires the close event
           to be fired (dispatch_close fires the close event - see implementation below)
         */
+
+        //Testing creating a recieve loop
+        let receive_loop = thread::spawn(move || {
+            // Receive loop
+            for message in temp_receiver.incoming_messages() {
+                let message = match message {
+                    Ok(m) => m,
+                    Err(e) => {
+                        println!("Receive Loop: {:?}", e);
+                        let _ = tx_1.send(Message::Close(None));
+                        return;
+                    }
+                 };
+                match message {
+                    Message::Close(_) => {
+                        // Got a close message, so send a close message and return
+                        let _ = tx_1.send(Message::Close(None));
+                        return;
+                    }
+                    Message::Ping(data) => match tx_1.send(Message::Pong(data)) {
+                        // Send a pong in response
+                        Ok(()) => (),
+                        Err(e) => {
+                            println!("Receive Loop: {:?}", e);
+                            return;
+                        }
+                    },
+                    // Say what we received
+                    _ => println!("Receive Loop: {:?}", message),
+                }
+                /*let global = ws_root.global.root();
+                let event = MessageEvent::new(global.r(),
+                    "open".to_owned(),
+                    EventBubbles::DoesNotBubble,
+                    EventCancelable::Cancelable, 
+                    message,
+                    "",
+                    "").root();
+                let target: JSRef<EventTarget> = EventTargetCast::from_ref(ws_root);
+                event.r().fire(target);*/
+            }
+        });
         Temporary::from_rooted(ws_root)
     }
 
