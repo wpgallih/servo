@@ -115,7 +115,8 @@ impl WebSocket {
         *other_sender = Some(temp_sender);
         let (tx, rx) = channel();
         let tx_1 = tx.clone();
-
+        let receive_target: JSRef<EventTarget> = EventTargetCast::from_ref(ws_root);
+        let receive_global = ws_root.global.root();
         //Create everything necessary for starting the open asynchronous task, then begin the task.
         let global_root = ws_root.global.root();
         let addr: Trusted<WebSocket> = Trusted::new(global_root.r().get_cx(), ws_root, global_root.r().script_chan().clone());
@@ -164,16 +165,14 @@ impl WebSocket {
                     // Say what we received
                     _ => println!("Receive Loop: {:?}", message),
                 }
-                /*let global = ws_root.global.root();
-                let event = MessageEvent::new(global.r(),
-                    "open".to_owned(),
-                    EventBubbles::DoesNotBubble,
-                    EventCancelable::Cancelable, 
+                let event = MessageEvent::new(receive_global.r(),
+                    "message".to_owned(),
+                    false,
+                    true, 
                     message,
-                    "",
-                    "").root();
-                let target: JSRef<EventTarget> = EventTargetCast::from_ref(ws_root);
-                event.r().fire(target);*/
+                    String::from_str(""),
+                    String::from_str(""));
+                event.dispatch_jsval(receive_target, receive_global, message);
             }
         });
         Temporary::from_rooted(ws_root)
